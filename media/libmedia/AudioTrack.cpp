@@ -429,11 +429,6 @@ status_t AudioTrack::set(
     }
     else {
 #endif
-    if (cbf != NULL) {
-        mAudioTrackThread = new AudioTrackThread(*this, threadCanCallJava);
-        mAudioTrackThread->run("AudioTrack", ANDROID_PRIORITY_AUDIO, 0 /*stack*/);
-    }
-
     // create the IAudioTrack
     status_t status = createTrack_l(streamType,
                                   sampleRate,
@@ -464,6 +459,11 @@ status_t AudioTrack::set(
     }
     mUserData = user;
 #endif
+
+    if (cbf != NULL) {
+        mAudioTrackThread = new AudioTrackThread(*this, threadCanCallJava);
+        mAudioTrackThread->run("AudioTrack", ANDROID_PRIORITY_AUDIO, 0 /*stack*/);
+    }
 
     mStatus = NO_ERROR;
     mStreamType = streamType;
