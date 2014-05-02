@@ -1978,15 +1978,14 @@ status_t AwesomePlayer::initVideoDecoder(uint32_t flags) {
             mVideoTrack,
             NULL, flags, USE_SURFACE_ALLOC ? mNativeWindow : NULL);
 
-    if(mVideoSource == NULL)
-    {
+    if(mVideoSource == NULL) {
         ALOGE("Creating HW decoder failed,fallback to SW decoder");
         flags |= OMXCodec::kPreferSoftwareCodecs;
         mVideoSource = OMXCodec::Create(
-            mClient.interface(), mVideoTrack->getFormat(),
-            false, // createEncoder
-            mVideoTrack,
-            NULL, flags, USE_SURFACE_ALLOC ? mNativeWindow : NULL);
+                mClient.interface(), mVideoTrack->getFormat(),
+                false, // createEncoder
+                mVideoTrack,
+                NULL, flags, USE_SURFACE_ALLOC ? mNativeWindow : NULL);
     }
 
     if (mVideoSource != NULL) {
