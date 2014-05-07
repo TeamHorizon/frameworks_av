@@ -352,10 +352,6 @@ static const char *FourCC2MIME(uint32_t fourcc) {
             return MEDIA_MIMETYPE_AUDIO_DTS;
         case FOURCC('d', 't', 's', 'e'):
             return MEDIA_MIMETYPE_AUDIO_DTS_LBR;
-        case FOURCC('a', 'c', '-', '3'):
-            return MEDIA_MIMETYPE_AUDIO_AC3;
-        case FOURCC('e', 'c', '-', '3'):
-            return MEDIA_MIMETYPE_AUDIO_EAC3;
 #endif
         default:
             CHECK(!"should not be here.");
