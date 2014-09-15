@@ -712,18 +712,10 @@ status_t ACodec::configureOutputBuffersFromNativeWindow(
     def.format.video.nFrameHeight,
     eNativeColorFormat);
 #elif defined(MTK_HARDWARE)
-    OMX_U32 frameWidth = def.format.video.nFrameWidth;
-    OMX_U32 frameHeight = def.format.video.nFrameHeight;
-
-    if (!strncmp("OMX.MTK.", mComponentName.c_str(), 8)) {
-        frameWidth = def.format.video.nStride;
-        frameHeight = def.format.video.nSliceHeight;
-    }
-
     err = native_window_set_buffers_geometry(
             mNativeWindow.get(),
-            frameWidth,
-            frameHeight,
+            def.format.video.nStride,
+            def.format.video.nSliceHeight,
             def.format.video.eColorFormat);
 #else
     err = native_window_set_buffers_geometry(
