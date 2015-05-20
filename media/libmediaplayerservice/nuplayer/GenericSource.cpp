@@ -58,7 +58,6 @@ NuPlayer::GenericSource::GenericSource(
       mFetchSubtitleDataGeneration(0),
       mFetchTimedTextDataGeneration(0),
       mDurationUs(0ll),
-      mCachedDurationUs(0ll),
       mAudioIsVorbis(false),
       mIsWidevine(false),
       mIsSecure(false),
@@ -93,7 +92,6 @@ void NuPlayer::GenericSource::resetDataSource() {
     mDrmManagerClient = NULL;
     mStarted = false;
     mStopRead = true;
-    mInitialSeekTime = -1;
 }
 
 status_t NuPlayer::GenericSource::setDataSource(
@@ -133,37 +131,23 @@ sp<MetaData> NuPlayer::GenericSource::getFileFormatMeta() const {
 
 status_t NuPlayer::GenericSource::initFromDataSource() {
     sp<MediaExtractor> extractor;
-    String8 mimeType;
-    float confidence;
-    sp<AMessage> dummy;
-    bool isWidevineStreaming = false;
 
     CHECK(mDataSource != NULL);
 
     if (mIsWidevine) {
-        isWidevineStreaming = SniffWVM(
-                mDataSource, &mimeType, &confidence, &dummy);
-        if (!isWidevineStreaming ||
-                strcasecmp(
+        String8 mimeType;
+        float confidence;
+        sp<AMessage> dummy;
+        bool success;
+
+        success = SniffWVM(mDataSource, &mimeType, &confidence, &dummy);
+        if (!success
+                || strcasecmp(
                     mimeType.string(), MEDIA_MIMETYPE_CONTAINER_WVM)) {
             ALOGE("unsupported widevine mime: %s", mimeType.string());
             return UNKNOWN_ERROR;
         }
-    } else if (mIsStreaming) {
-        if (mSniffedMIME.empty()) {
-            if (!mDataSource->sniff(&mimeType, &confidence, &dummy)) {
-                return UNKNOWN_ERROR;
-            }
-            mSniffedMIME = mimeType.string();
-        }
-        isWidevineStreaming = !strcasecmp(
-                mSniffedMIME.c_str(), MEDIA_MIMETYPE_CONTAINER_WVM);
-    }
 
-    if (isWidevineStreaming) {
-        // we don't want cached source for widevine streaming.
-        mCachedSource.clear();
-        mDataSource = mHttpSource;
         mWVMExtractor = new WVMExtractor(mDataSource);
         mWVMExtractor->setAdaptiveStreamingMode(true);
         if (mUIDValid) {
@@ -198,6 +182,14 @@ status_t NuPlayer::GenericSource::initFromDataSource() {
             if (mFileMeta->findCString(kKeyMIMEType, &fileMime)
                     && !strncasecmp(fileMime, "video/wvm", 9)) {
                 mIsWidevine = true;
+                if (!mUri.empty()) {
+                  // streaming, but the app forgot to specify widevine:// url
+                  mWVMExtractor = static_cast<WVMExtractor *>(extractor.get());
+                  mWVMExtractor->setAdaptiveStreamingMode(true);
+                  if (mUIDValid) {
+                    mWVMExtractor->setUID(mUID);
+                  }
+                }
             }
         }
     }
@@ -249,8 +241,6 @@ status_t NuPlayer::GenericSource::initFromDataSource() {
                     if (mUIDValid) {
                         extractor->setUID(mUID);
                     }
-                } else {
-                     mIsWidevine = false;
                 }
             }
         }
@@ -595,10 +585,6 @@ void NuPlayer::GenericSource::start() {
     setDrmPlaybackStatusIfNeeded(Playback::START, getLastReadPosition() / 1000);
     mStarted = true;
 
-    if (mInitialSeekTime > 0) {
-        doSeek(mInitialSeekTime);
-    }
-
     (new AMessage(kWhatStart, id()))->post();
 }
 
@@ -723,10 +709,10 @@ void NuPlayer::GenericSource::sendCacheStats() {
     int32_t kbps = 0;
     status_t err = UNKNOWN_ERROR;
 
-    if (mWVMExtractor != NULL) {
-        err = mWVMExtractor->getEstimatedBandwidthKbps(&kbps);
-    } else if (mCachedSource != NULL) {
+    if (mCachedSource != NULL) {
         err = mCachedSource->getEstimatedBandwidthKbps(&kbps);
+    } else if (mWVMExtractor != NULL) {
+        err = mWVMExtractor->getEstimatedBandwidthKbps(&kbps);
     }
 
     if (err == OK) {
@@ -743,24 +729,14 @@ void NuPlayer::GenericSource::ensureCacheIsFetching() {
     }
 }
 
-status_t NuPlayer::GenericSource::getCachedDuration(
-        int64_t *cachedDurationUs, size_t *remaining) {
+void NuPlayer::GenericSource::onPollBuffering() {
     status_t finalStatus = UNKNOWN_ERROR;
+    int64_t cachedDurationUs = -1ll;
     ssize_t cachedDataRemaining = -1;
 
-    ALOGW_IF(mWVMExtractor != NULL && mCachedSource != NULL,
-            "WVMExtractor and NuCachedSource both present");
-
-    if (mWVMExtractor != NULL) {
-        *cachedDurationUs =
-                mWVMExtractor->getCachedDurationUs(&finalStatus);
-    } else if (mCachedSource != NULL) {
+    if (mCachedSource != NULL) {
         cachedDataRemaining =
                 mCachedSource->approxDataRemaining(&finalStatus);
-
-        if (remaining != 0) {
-            *remaining = cachedDataRemaining;
-        }
 
         if (finalStatus == OK) {
             off64_t size;
@@ -771,28 +747,13 @@ status_t NuPlayer::GenericSource::getCachedDuration(
                 bitrate = mBitrate;
             }
             if (bitrate > 0) {
-                *cachedDurationUs = cachedDataRemaining * 8000000ll / bitrate;
+                cachedDurationUs = cachedDataRemaining * 8000000ll / bitrate;
             }
-        } else if (mDurationUs > 0) {
-            *cachedDurationUs = mDurationUs;
-            return OK;
         }
+    } else if (mWVMExtractor != NULL) {
+        cachedDurationUs
+            = mWVMExtractor->getCachedDurationUs(&finalStatus);
     }
-
-    if (*cachedDurationUs > 0) {
-        mCachedDurationUs = *cachedDurationUs;
-    } else {
-        *cachedDurationUs = mCachedDurationUs;
-    }
-
-    ALOGV("getCachedDuration = %lld", *cachedDurationUs);
-    return finalStatus;
-}
-
-void NuPlayer::GenericSource::onPollBuffering() {
-    int64_t cachedDurationUs = 0ll;
-    size_t cachedDataRemaining = 0;
-    status_t finalStatus = getCachedDuration(&cachedDurationUs, &cachedDataRemaining);
 
     if (finalStatus != OK) {
         ALOGV("onPollBuffering: EOS (finalStatus = %d)", finalStatus);
@@ -1424,12 +1385,7 @@ status_t NuPlayer::GenericSource::doSeek(int64_t seekTimeUs) {
     // If the Widevine source is stopped, do not attempt to read any
     // more buffers.
     if (mStopRead) {
-        if (mIsWidevine) {
-            return INVALID_OPERATION;
-        } else if (mInitialSeekTime == -1) {
-            mInitialSeekTime = seekTimeUs;
-            return OK;
-        }
+        return INVALID_OPERATION;
     }
     if (mVideoTrack.mSource != NULL) {
         int64_t actualTimeUs;
