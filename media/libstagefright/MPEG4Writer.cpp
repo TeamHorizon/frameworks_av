@@ -979,7 +979,7 @@ void MPEG4Writer::writeMvhdBox(int64_t durationUs) {
     writeInt32(now);           // creation time
     writeInt32(now);           // modification time
     writeInt32(mTimeScale / mHFRRatio);    // mvhd timescale
-    int32_t duration = (durationUs * mTimeScale + 5E5) / 1E6;
+    int32_t duration = (durationUs * (mTimeScale / mHFRRatio) + 5E5) / 1E6;
     writeInt32(duration);
     writeInt32(0x10000);       // rate: 1.0
     writeInt16(0x100);         // volume
@@ -2268,10 +2268,14 @@ status_t MPEG4Writer::Track::threadEntry() {
 
         if (mOwner->exceedsFileSizeLimit()) {
             mOwner->notify(MEDIA_RECORDER_EVENT_INFO, MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED, 0);
+            copy->release();
+            copy = NULL;
             break;
         }
         if (mOwner->exceedsFileDurationLimit()) {
             mOwner->notify(MEDIA_RECORDER_EVENT_INFO, MEDIA_RECORDER_INFO_MAX_DURATION_REACHED, 0);
+            copy->release();
+            copy = NULL;
             break;
         }
 
@@ -2388,6 +2392,8 @@ status_t MPEG4Writer::Track::threadEntry() {
             copy->release();
             err = UNKNOWN_ERROR;
             mSource->notifyError(err);
+            copy->release();
+            copy = NULL;
             return err;
         }
 

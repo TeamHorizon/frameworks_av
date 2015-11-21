@@ -238,7 +238,7 @@ AwesomePlayer::AwesomePlayer()
 #ifdef MTK_HARDWARE
       mAVSyncTimeUs(-1),
 #endif
-      mIsFirstFrameAfterResume(false) {
+      mIsFirstFrameAfterResume(false){
     CHECK_EQ(mClient.connect(), (status_t)OK);
 
     DataSource::RegisterDefaultSniffers();
@@ -2003,6 +2003,34 @@ status_t AwesomePlayer::initAudioDecoder() {
     if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_RAW)) {
         ALOGV("createAudioPlayer: bypass OMX (raw)");
         mAudioSource = mAudioTrack;
+#ifdef USE_ALP_AUDIO
+     } else if (mVideoTrack == NULL && !strncasecmp(mime, MEDIA_MIMETYPE_AUDIO_MPEG, 10)) {
+        mAudioSource = OMXCodec::Create(
+            mClient.interface(), mAudioTrack->getFormat(),
+            false,  // createEncoder
+            mAudioTrack,
+            "OMX.Exynos.MP3.Decoder");
+        if (mAudioSource == NULL) {
+            mAudioSource = OMXCodec::Create(
+                    mClient.interface(), mAudioTrack->getFormat(),
+                    false,  // createEncoder
+                    mAudioTrack);
+        }
+#endif
+#ifdef USE_SEIREN_AUDIO
+     } else if (mVideoTrack == NULL && !strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AAC)) {
+        mAudioSource = OMXCodec::Create(
+            mClient.interface(), mAudioTrack->getFormat(),
+            false,  // createEncoder
+            mAudioTrack,
+            "OMX.Exynos.AAC.Decoder");
+        if (mAudioSource == NULL) {
+            mAudioSource = OMXCodec::Create(
+                    mClient.interface(), mAudioTrack->getFormat(),
+                    false,  // createEncoder
+                    mAudioTrack);
+        }
+#endif
         // For PCM offload fallback
         if (mOffloadAudio) {
             mOmxSource = mAudioSource;
