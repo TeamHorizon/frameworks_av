@@ -1023,7 +1023,11 @@ uint32_t MPEG4Writer::getMpeg4Time() {
     // MP4 file uses time counting seconds since midnight, Jan. 1, 1904
     // while time function returns Unix epoch values which starts
     // at 1970-01-01. Lets add the number of seconds between them
-    uint32_t mpeg4Time = now + (66 * 365 + 17) * (24 * 60 * 60);
+    static const uint32_t delta = (66 * 365 + 17) * (24 * 60 * 60);
+    if (now < 0 || uint32_t(now) > UINT32_MAX - delta) {
+        return 0;
+    }
+    uint32_t mpeg4Time = uint32_t(now) + delta;
     return mpeg4Time;
 }
 
@@ -1144,7 +1148,7 @@ off64_t MPEG4Writer::addSample_l(MediaBuffer *buffer) {
     return old_offset;
 }
 
-static void StripStartcode(MediaBuffer *buffer) {
+void MPEG4Writer::StripStartcode(MediaBuffer *buffer) {
     if (buffer->range_length() < 4) {
         return;
     }
@@ -1833,9 +1837,16 @@ status_t MPEG4Writer::Track::start(MetaData *params) {
     }
 
     int64_t startTimeUs;
+
     if (params == NULL || !params->findInt64(kKeyTime, &startTimeUs)) {
         startTimeUs = 0;
     }
+
+    int64_t startTimeBootUs;
+    if (params == NULL || !params->findInt64(kKeyTimeBoot, &startTimeBootUs)) {
+        startTimeBootUs = 0;
+    }
+
     mStartTimeRealUs = startTimeUs;
 
     int32_t rotationDegrees;
@@ -1846,6 +1857,7 @@ status_t MPEG4Writer::Track::start(MetaData *params) {
     initTrackingProgressStatus(params);
 
     sp<MetaData> meta = new MetaData;
+
     if (mOwner->isRealTimeRecording() && mOwner->numTracks() > 1) {
         /*
          * This extra delay of accepting incoming audio/video signals
@@ -1861,10 +1873,12 @@ status_t MPEG4Writer::Track::start(MetaData *params) {
             startTimeOffsetUs = kInitialDelayTimeUs;
         }
         startTimeUs += startTimeOffsetUs;
+        startTimeBootUs += startTimeOffsetUs;
         ALOGI("Start time offset: %" PRId64 " us", startTimeOffsetUs);
     }
 
     meta->setInt64(kKeyTime, startTimeUs);
+    meta->setInt64(kKeyTimeBoot, startTimeBootUs);
 
     status_t err = mSource->start(meta.get());
     if (err != OK) {
@@ -2448,7 +2462,9 @@ status_t MPEG4Writer::Track::threadEntry() {
             ALOGE("timestampUs %" PRId64 " < lastTimestampUs %" PRId64 " for %s track",
                 timestampUs, lastTimestampUs, trackName);
             copy->release();
-            return UNKNOWN_ERROR;
+            err = UNKNOWN_ERROR;
+            mSource->notifyError(err);
+            return err;
         }
 
         // if the duration is different for this sample, see if it is close enough to the previous

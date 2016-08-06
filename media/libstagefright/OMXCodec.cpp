@@ -384,7 +384,7 @@ status_t OMXCodec::parseHEVCCodecSpecificData(
     const uint8_t *ptr = (const uint8_t *)data;
 
     // verify minimum size and configurationVersion == 1.
-    if (size < 7 || ptr[0] != 1) {
+    if (size < 23 || ptr[0] != 1) {
         return ERROR_MALFORMED;
     }
 
@@ -399,6 +399,9 @@ status_t OMXCodec::parseHEVCCodecSpecificData(
     size -= 1;
     size_t j = 0, i = 0;
     for (i = 0; i < numofArrays; i++) {
+        if (size < 3) {
+            return ERROR_MALFORMED;
+        }
         ptr += 1;
         size -= 1;
 
@@ -2355,9 +2358,6 @@ void OMXCodec::onEvent(OMX_EVENTTYPE event, OMX_U32 data1, OMX_U32 data2) {
 #ifdef USE_S3D_SUPPORT
         case (OMX_EVENTTYPE)OMX_EventS3DInformation:
         {
-            if (mFlags & kClientNeedsFramebuffer)
-                break;
-
             sp<IServiceManager> sm = defaultServiceManager();
             sp<android::IExynosHWCService> hwc = interface_cast<android::IExynosHWCService>(
                     sm->getService(String16("Exynos.HWCService")));
