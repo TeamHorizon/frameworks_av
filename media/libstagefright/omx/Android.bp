@@ -85,11 +85,6 @@ cc_library_shared {
                 cppflags: ["-DQCOM_BSP_LEGACY"],
             },
         },
-        qualcomm: {
-            targetUsesQCOMLegacyBsp: {
-                cflags: [ "-DQCOM_BSP_LEGACY", ],
-            },
-        },
         uses_media_extensions: {
             cflags: ["-DTARGET_USES_MEDIA_EXTENSIONS"],
         },
